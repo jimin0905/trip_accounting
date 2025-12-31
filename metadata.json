@@ -1,0 +1,5 @@
+{
+  "name": "旅遊分帳 App",
+  "description": "A collaborative travel expense tracker with currency conversion and cloud sync.",
+  "requestFramePermissions": []
+}
