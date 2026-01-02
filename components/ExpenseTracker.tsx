@@ -1056,7 +1056,12 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
 
                     <button 
                         onClick={() => {
-                            onUpdateLocalSettings(tempSettings);
+                            // Defensive: If unsettled, force currency to match original to prevent any potential UI state mismatch or undefined errors
+                            const finalSettings = hasUnsettledExpenses 
+                                ? { ...tempSettings, currency: tripSettings.currency || 'TWD' }
+                                : { ...tempSettings, currency: tempSettings.currency || 'TWD' };
+                            
+                            onUpdateLocalSettings(finalSettings);
                             setShowSettings(false);
                         }}
                         className="w-full bg-stone-800 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2"
