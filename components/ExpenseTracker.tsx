@@ -1,25 +1,168 @@
 
 import React, { useState, useEffect, useMemo, forwardRef, useImperativeHandle } from 'react';
-import { Plus, Trash2, ShoppingBag, Utensils, Bus, MoreHorizontal, Cloud, CloudOff, LogOut, LogIn, Users, ChevronUp, ChevronDown, Pencil, Receipt, Calculator, Delete, ArrowRight, ArrowLeft, Info, Save, Settings, Wallet, AlertTriangle, ArrowRightLeft, CheckCircle2, Download, RotateCcw } from 'lucide-react';
+import { Plus, Trash2, ShoppingBag, Utensils, Bus, MoreHorizontal, Cloud, CloudOff, LogOut, LogIn, Users, ChevronUp, ChevronDown, Pencil, Receipt, Calculator, Delete, ArrowRight, ArrowLeft, Info, Save, Settings, Wallet, AlertTriangle, ArrowRightLeft, CheckCircle2, Download, RotateCcw, Check, X, Globe } from 'lucide-react';
 import { Expense, UserProfile, TripSettings } from '../types';
 import { syncService } from '../services/firebase';
 
-const CATEGORIES = [
-  { id: 'food', label: '餐飲', icon: Utensils, color: 'text-orange-600', bg: 'bg-orange-50' },
-  { id: 'shopping', label: '購物', icon: ShoppingBag, color: 'text-purple-600', bg: 'bg-purple-50' },
-  { id: 'transport', label: '交通', icon: Bus, color: 'text-blue-600', bg: 'bg-blue-50' },
-  { id: 'other', label: '其他', icon: MoreHorizontal, color: 'text-gray-600', bg: 'bg-gray-50' },
+type Language = 'zh' | 'en';
+
+const TRANSLATIONS = {
+    zh: {
+        appName: 'SenTrip Pay',
+        totalExpense: '總支出',
+        checkDetails: '查看分帳',
+        settleDetails: '結算明細',
+        settleAll: '全部結清',
+        allSettled: '目前沒有需要結算的款項。',
+        owe: '應付',
+        receive: '應收',
+        settled: '已結清',
+        unsettled: '未結清',
+        delete: '刪除',
+        edit: '編輯',
+        save: '儲存',
+        cancel: '取消',
+        confirmDelete: '確定刪除？',
+        confirmSettle: '⚠️ 確定要結清所有帳務嗎？\n結清後將無法再編輯這些項目的金額。',
+        confirmReset: '⚠️即將重置應用程式\n\n此動作將：\n1. 斷開雲端同步連線\n2. 清空所有本機儲存資料\n3. 回復至初始狀態\n\n若資料未同步至雲端，將會永久遺失。\n\n確定要繼續嗎？',
+        confirmLogout: '確定要登出同步模式嗎？',
+        noExpenses: '暫無支出紀錄',
+        addExpense: '新增支出',
+        editExpense: '編輯支出',
+        amount: '金額',
+        title: '項目名稱',
+        titlePlaceholder: '輸入項目名稱 (如: 晚餐、計程車)',
+        category: '類別',
+        date: '日期',
+        payer: '先付者',
+        splitType: '分帳方式',
+        splitAvg: '平分',
+        splitSelf: '個人',
+        splitInd: '個別',
+        splitDetails: '分帳詳情',
+        members: '成員管理',
+        addMember: '新增成員',
+        newMemberPlaceholder: '輸入新成員名字',
+        removeMemberError: '無法移除（至少需一位成員或已有紀錄）',
+        sync: '雲端同步',
+        syncConnected: '已連線',
+        syncOffline: '離線',
+        syncError: '連線失敗',
+        syncConnect: '連線同步',
+        syncDisconnect: '中斷連線',
+        groupId: '群組 ID',
+        pin: 'PIN 碼',
+        settings: '行程設定',
+        startDate: '開始日期',
+        endDate: '結束日期',
+        currency: '行程幣別',
+        language: '語言 / Language',
+        resetApp: '重置應用程式',
+        exportCSV: '匯出支出紀錄 (.csv)',
+        exchange: '匯率換算',
+        calculator: '計算機',
+        exchangeRate: '匯率設定',
+        inputForeign: '輸入外幣金額',
+        recordIt: '記一筆',
+        categories: {
+            food: '餐飲',
+            shopping: '購物',
+            transport: '交通',
+            other: '其他'
+        },
+        csvHeaders: ["日期", "項目", "類別", "金額", "幣別", "先付者", "分帳方式", "分帳詳情", "狀態"],
+        syncHint: '輸入相同的群組 ID 與 PIN 碼，即可在多裝置間即時同步帳務。',
+        memberHint: '注意：移除成員需該成員無任何消費紀錄。',
+        settingsHint: '修改日期將重新計算所有支出的天數歸屬。\n若處於同步模式，設定將同步至雲端。',
+        unknown: '未知'
+    },
+    en: {
+        appName: 'SenTrip Pay',
+        totalExpense: 'Total Expense',
+        checkDetails: 'View Debts',
+        settleDetails: 'Settlement',
+        settleAll: 'Settle All',
+        allSettled: 'All expenses are settled.',
+        owe: 'Owes',
+        receive: 'Receives',
+        settled: 'Settled',
+        unsettled: 'Open',
+        delete: 'Delete',
+        edit: 'Edit',
+        save: 'Save',
+        cancel: 'Cancel',
+        confirmDelete: 'Are you sure you want to delete?',
+        confirmSettle: '⚠️ Settle all outstanding debts?\nYou cannot edit amounts after settling.',
+        confirmReset: '⚠️ Factory Reset\n\nThis will:\n1. Disconnect cloud sync\n2. Clear local storage\n3. Reset to initial state\n\nUnsynced data will be lost.\n\nContinue?',
+        confirmLogout: 'Log out of sync mode?',
+        noExpenses: 'No expenses yet',
+        addExpense: 'New Expense',
+        editExpense: 'Edit Expense',
+        amount: 'Amount',
+        title: 'Title',
+        titlePlaceholder: 'Item name (e.g. Dinner, Taxi)',
+        category: 'Category',
+        date: 'Date',
+        payer: 'Paid By',
+        splitType: 'Split By',
+        splitAvg: 'Equal',
+        splitSelf: 'Self',
+        splitInd: 'Custom',
+        splitDetails: 'Split Details',
+        members: 'Members',
+        addMember: 'Add Member',
+        newMemberPlaceholder: 'New member name',
+        removeMemberError: 'Cannot remove (Need 1+ member or has records)',
+        sync: 'Cloud Sync',
+        syncConnected: 'Synced',
+        syncOffline: 'Offline',
+        syncError: 'Error',
+        syncConnect: 'Connect',
+        syncDisconnect: 'Disconnect',
+        groupId: 'Group ID',
+        pin: 'PIN Code',
+        settings: 'Trip Settings',
+        startDate: 'Start Date',
+        endDate: 'End Date',
+        currency: 'Currency',
+        language: 'Language',
+        resetApp: 'Reset App',
+        exportCSV: 'Export CSV',
+        exchange: 'Exchange',
+        calculator: 'Calculator',
+        exchangeRate: 'Exchange Rate',
+        inputForeign: 'Foreign Amount',
+        recordIt: 'Record',
+        categories: {
+            food: 'Food',
+            shopping: 'Shop',
+            transport: 'Trans',
+            other: 'Other'
+        },
+        csvHeaders: ["Date", "Item", "Category", "Amount", "Currency", "Payer", "Method", "Details", "Status"],
+        syncHint: 'Enter the same Group ID & PIN to sync across devices.',
+        memberHint: 'Note: Can only remove members with no records.',
+        settingsHint: 'Changing dates recalculates day labels.\nSettings sync to cloud if connected.',
+        unknown: 'Unknown'
+    }
+};
+
+const CATEGORIES_DEF = [
+  { id: 'food', icon: Utensils, color: 'text-orange-600', bg: 'bg-orange-50' },
+  { id: 'shopping', icon: ShoppingBag, color: 'text-purple-600', bg: 'bg-purple-50' },
+  { id: 'transport', icon: Bus, color: 'text-blue-600', bg: 'bg-blue-50' },
+  { id: 'other', icon: MoreHorizontal, color: 'text-gray-600', bg: 'bg-gray-50' },
 ] as const;
 
 // Sorted by Code ASC
 const SUPPORTED_CURRENCIES = [
-    { code: 'EUR', label: '歐元' },
-    { code: 'JPY', label: '日幣' },
-    { code: 'KRW', label: '韓元' },
-    { code: 'MYR', label: '馬幣' },
-    { code: 'THB', label: '泰銖' },
-    { code: 'TWD', label: '台幣' },
-    { code: 'USD', label: '美金' },
+    { code: 'EUR', label: 'Euro' },
+    { code: 'JPY', label: 'Yen' },
+    { code: 'KRW', label: 'Won' },
+    { code: 'MYR', label: 'Ringgit' },
+    { code: 'THB', label: 'Baht' },
+    { code: 'TWD', label: 'TWD' },
+    { code: 'USD', label: 'USD' },
 ];
 
 const DEFAULT_RATES: Record<string, number> = {
@@ -42,6 +185,19 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([{ id: 'u1', name: '我' }]);
   
+  // Language State
+  const [language, setLanguage] = useState<Language>(() => {
+      const saved = localStorage.getItem('bkk_app_language');
+      return (saved === 'en' || saved === 'zh') ? saved : 'zh';
+  });
+
+  const t = TRANSLATIONS[language];
+
+  // Save Language Preference
+  useEffect(() => {
+      localStorage.setItem('bkk_app_language', language);
+  }, [language]);
+
   // UI States
   const [showUserManage, setShowUserManage] = useState(false);
   const [showDebtDetails, setShowDebtDetails] = useState(false);
@@ -64,9 +220,13 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
   const [firebaseError, setFirebaseError] = useState(false);
   const [newUserName, setNewUserName] = useState('');
 
+  // User Edit States
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [editNameVal, setEditNameVal] = useState('');
+
   // Tool States
   const [showExchange, setShowExchange] = useState(false);
-  const [calcCurrency, setCalcCurrency] = useState<string>('TWD'); // Default TWD
+  const [calcCurrency, setCalcCurrency] = useState<string>('USD'); // Default placeholder
   const [calcAmount, setCalcAmount] = useState('');
   const [showSimpleCalc, setShowSimpleCalc] = useState(false);
   const [simpleCalcDisplay, setSimpleCalcDisplay] = useState('');
@@ -81,13 +241,22 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
   }, [exchangeRates]);
 
   const currentRate = exchangeRates[calcCurrency] || 1;
+  const tripCurrency = tripSettings.currency || 'TWD';
+
+  // Initialize calc currency to something other than trip currency if possible
+  useEffect(() => {
+      if (calcCurrency === tripCurrency) {
+          const next = SUPPORTED_CURRENCIES.find(c => c.code !== tripCurrency)?.code || 'USD';
+          setCalcCurrency(next);
+      }
+  }, [tripCurrency]);
 
   const handleRateChange = (currency: string, val: string) => {
       const num = parseFloat(val);
       setExchangeRates(prev => ({ ...prev, [currency]: isNaN(num) ? 0 : num }));
   };
 
-  const calculatedTWD = useMemo(() => {
+  const calculatedBaseAmount = useMemo(() => {
       const val = parseFloat(calcAmount);
       if (isNaN(val)) return 0;
       return Math.round(val * currentRate);
@@ -100,7 +269,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
             await syncService.updateSettings(groupId, pin, newSettings);
         } catch (e: any) {
             console.error(e);
-            alert(`設定同步失敗: ${e.message}`);
+            alert(`Sync Failed: ${e.message}`);
         }
       }
     }
@@ -178,10 +347,10 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                 const unsub = await syncService.subscribe(groupId, pin, 
                     (status) => { 
                         if (active) {
-                            // If status is empty (success), show "已同步"
+                            // If status is empty (success), show "Synced"
                             // If status is "Verifying...", only show if it takes time or first load
                             if (status === "") {
-                                setConnectionStatus("已同步");
+                                setConnectionStatus(t.syncConnected);
                             } else {
                                 setConnectionStatus(status); 
                             }
@@ -200,7 +369,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                     unsub(); // Cleanup if unmounted before init finished
                 }
             } catch (e) { 
-                if (active) setConnectionStatus('❌ 連線失敗'); 
+                if (active) setConnectionStatus(`❌ ${t.syncError}`); 
             }
         } else {
             setConnectionStatus('');
@@ -212,7 +381,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
         active = false;
         if (unsubscribeRef) unsubscribeRef();
     };
-  }, [isSyncMode, groupId, pin, onSettingsSync]);
+  }, [isSyncMode, groupId, pin, onSettingsSync, language]);
 
   useEffect(() => {
     if (!isSyncMode) localStorage.setItem('bkk_expenses_2025', JSON.stringify(expenses));
@@ -327,7 +496,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
   };
 
   const handleLogout = () => {
-      if (!window.confirm("確定要登出同步模式嗎？")) return;
+      if (!window.confirm(t.confirmLogout)) return;
       setIsSyncMode(false); setGroupId(''); setPin(''); setConnectionStatus('');
       localStorage.removeItem('bkk_sync_session');
       setExpenses(localStorage.getItem('bkk_expenses_2025') ? JSON.parse(localStorage.getItem('bkk_expenses_2025')!) : []);
@@ -339,18 +508,37 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
       setUsers(newUsers); setNewUserName('');
       if (isSyncMode && syncService.isReady()) {
           try { await syncService.updateUsers(groupId, pin, newUsers); } 
-          catch(e: any) { console.error(e); alert(`新增成員失敗: ${e.message}`); }
+          catch(e: any) { console.error(e); alert(`${t.addMember} Failed: ${e.message}`); }
       }
   };
 
   const handleRemoveUser = async (id: string) => {
-      if (users.length <= 1 || expenses.some(e => e.paidBy === id || e.involvedUsers?.includes(id))) { alert("無法移除（至少需一位成員或已有紀錄）"); return; }
+      if (users.length <= 1 || expenses.some(e => e.paidBy === id || e.involvedUsers?.includes(id))) { alert(t.removeMemberError); return; }
       const newUsers = users.filter(u => u.id !== id);
       setUsers(newUsers); if (payer === id) setPayer(newUsers[0].id);
       if (isSyncMode && syncService.isReady()) {
           try { await syncService.updateUsers(groupId, pin, newUsers); } 
-          catch(e: any) { console.error(e); alert(`移除成員失敗: ${e.message}`); }
+          catch(e: any) { console.error(e); alert(`${t.delete} Failed: ${e.message}`); }
       }
+  };
+  
+  const handleUpdateUser = async () => {
+        if (!editingUserId || !editNameVal.trim()) return;
+        
+        const newUsers = users.map(u => u.id === editingUserId ? { ...u, name: editNameVal.trim() } : u);
+        setUsers(newUsers);
+        setEditingUserId(null);
+        setEditNameVal('');
+        
+        if (isSyncMode && syncService.isReady()) {
+            try { await syncService.updateUsers(groupId, pin, newUsers); } 
+            catch(e: any) { console.error(e); alert(`${t.edit} Failed: ${e.message}`); }
+        }
+  };
+
+  const startEditUser = (user: UserProfile) => {
+      setEditingUserId(user.id);
+      setEditNameVal(user.name);
   };
 
   const resetForm = () => { setTitle(''); setAmount(''); setEditingId(null); setIsFormExpanded(false); setSplitType('split'); setCustomAmounts({}); setSelectedParticipants(users.map(u => u.id)); setSelectedDate(getTodayString()); };
@@ -384,7 +572,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
     else if (splitType === 'individual') {
         individualAmountsMap = {}; let sum = 0;
         finalInvolved.forEach(uid => { const val = parseFloat(customAmounts[uid] || '0'); individualAmountsMap![uid] = val; sum += val; });
-        if (Math.abs(sum - totalVal) > 0.5) { alert(`總和不符`); return; }
+        if (Math.abs(sum - totalVal) > 0.5) { alert(`Sum mismatch`); return; }
     }
 
     // Fix: Create payload without undefined properties for Firebase
@@ -420,14 +608,14 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
             else await syncService.addExpense(groupId, pin, payload);
         } catch (e: any) {
             console.error("Sync Error", e);
-            alert(`雲端同步失敗: ${e.message || '權限不足'}`);
+            alert(`Sync Failed: ${e.message || 'Permission Denied'}`);
         }
     }
   };
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    if (!window.confirm("確定刪除？")) return;
+    if (!window.confirm(t.confirmDelete)) return;
     
     // Optimistic Update
     setExpenses(prev => prev.filter(e => e.id !== id));
@@ -435,7 +623,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
 
     if (isSyncMode && syncService.isReady()) {
         try { await syncService.deleteExpense(groupId, pin, id); } 
-        catch(e: any) { console.error(e); alert(`刪除同步失敗: ${e.message}`); }
+        catch(e: any) { console.error(e); alert(`${t.delete} Failed: ${e.message}`); }
     }
   };
 
@@ -443,7 +631,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
       e.stopPropagation();
       const unsettledIds = expenses.filter(e => !e.isSettled).map(e => e.id);
       if (unsettledIds.length === 0) return;
-      if (!window.confirm("⚠️ 確定要結清所有帳務嗎？\n結清後將無法再編輯這些項目的金額。")) return;
+      if (!window.confirm(t.confirmSettle)) return;
       
       // Local Update Immediately
       setExpenses(prev => prev.map(e => ({ ...e, isSettled: true })));
@@ -451,22 +639,23 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
 
       if (isSyncMode && syncService.isReady()) {
           try { await syncService.settleExpenses(groupId, pin, unsettledIds); } 
-          catch(err: any) { console.error(err); alert(`結清同步失敗: ${err.message}`); }
+          catch(err: any) { console.error(err); alert(`${t.settleAll} Failed: ${err.message}`); }
       }
   };
 
   const handleExportCSV = () => {
     if (expenses.length === 0) {
-        alert("目前沒有任何支出紀錄可供匯出。");
+        alert(t.noExpenses);
         return;
     }
 
-    const headers = ["日期", "項目", "類別", "金額", "幣別", "先付者", "分帳方式", "分帳詳情", "狀態"];
+    const headers = t.csvHeaders;
     const rows = expenses.map(e => {
-        const payerName = users.find(u => u.id === e.paidBy)?.name || 'Unknown';
-        const categoryLabel = CATEGORIES.find(c => c.id === e.category)?.label || e.category;
-        const status = e.isSettled ? "已結清" : "未結清";
-        const splitLabel = e.splitType === 'split' ? "平分" : e.splitType === 'self' ? "個人" : "個別";
+        const payerName = users.find(u => u.id === e.paidBy)?.name || t.unknown;
+        // @ts-ignore
+        const categoryLabel = t.categories[e.category] || e.category;
+        const status = e.isSettled ? t.settled : t.unsettled;
+        const splitLabel = e.splitType === 'split' ? t.splitAvg : e.splitType === 'self' ? t.splitSelf : t.splitInd;
         
         // Format Details
         let details = "";
@@ -509,7 +698,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
   };
 
   const handleFactoryReset = () => {
-      if (window.confirm("⚠️即將重置應用程式\n\n此動作將：\n1. 斷開雲端同步連線\n2. 清空所有本機儲存資料\n3. 回復至初始狀態\n\n若資料未同步至雲端，將會永久遺失。\n\n確定要繼續嗎？")) {
+      if (window.confirm(t.confirmReset)) {
           // 1. Disconnect Sync
           setIsSyncMode(false);
           setGroupId('');
@@ -521,6 +710,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
           localStorage.removeItem('bkk_trip_settings');
           localStorage.removeItem('bkk_sync_session');
           localStorage.removeItem('bkk_exchange_rates');
+          localStorage.removeItem('bkk_app_language');
 
           // 3. Force Reload to reset all states
           window.location.reload();
@@ -581,7 +771,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
         <header className="px-5 py-4 bg-white shadow-sm z-10 flex justify-between items-center">
             <h1 className="text-xl font-bold text-stone-800 tracking-wide flex items-center gap-2">
                 <Wallet className="text-stone-800" size={24} />
-                <span>TripLedger</span>
+                <span>{t.appName}</span>
             </h1>
             <div className="flex items-center gap-3">
                 <button 
@@ -591,7 +781,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                     }`}
                 >
                    {isSyncMode ? <Cloud size={14} /> : <CloudOff size={14} />}
-                   <span>{connectionStatus || (isSyncMode ? '已同步' : '離線')}</span>
+                   <span>{connectionStatus || (isSyncMode ? t.syncConnected : t.syncOffline)}</span>
                 </button>
                 <button onClick={() => toggleWidget('settings')} className="text-stone-400 hover:text-stone-600">
                     <Settings size={20} />
@@ -606,7 +796,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                    <Receipt size={140} />
                 </div>
                 <div className="relative z-10">
-                    <p className="text-stone-400 text-xs font-medium uppercase tracking-wider mb-1">Total Expense</p>
+                    <p className="text-stone-400 text-xs font-medium uppercase tracking-wider mb-1">{t.totalExpense}</p>
                     <div className="flex items-baseline gap-2">
                         <span className="text-3xl font-bold tracking-tight">
                             {stats.totalCost.toLocaleString()}
@@ -629,7 +819,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                             onClick={() => setShowDebtDetails(true)}
                             className="text-xs bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-full transition-colors"
                         >
-                            查看分帳
+                            {t.checkDetails}
                         </button>
                     </div>
                 </div>
@@ -662,7 +852,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                 onChange={(e) => setFilterDate(e.target.value)}
                 className="bg-white border border-stone-200 text-stone-700 text-sm rounded-xl px-3 outline-none focus:border-stone-400"
             >
-                <option value="all">所有日期</option>
+                <option value="all">All Dates</option>
                 {TRIP_DATES.map(d => (
                     <option key={d.value} value={d.value}>{d.label}</option>
                 ))}
@@ -676,14 +866,15 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                     <div className="bg-stone-100 p-4 rounded-full mb-3">
                         <Receipt size={24} />
                     </div>
-                    <p className="text-sm">暫無支出紀錄</p>
+                    <p className="text-sm">{t.noExpenses}</p>
                 </div>
             ) : (
                 filteredExpenses.map(expense => {
-                    const CatIcon = CATEGORIES.find(c => c.id === expense.category)?.icon || MoreHorizontal;
-                    const catColor = CATEGORIES.find(c => c.id === expense.category)?.color || 'text-gray-600';
-                    const catBg = CATEGORIES.find(c => c.id === expense.category)?.bg || 'bg-gray-50';
-                    const payerName = users.find(u => u.id === expense.paidBy)?.name || '未知';
+                    const CatDef = CATEGORIES_DEF.find(c => c.id === expense.category);
+                    const CatIcon = CatDef?.icon || MoreHorizontal;
+                    const catColor = CatDef?.color || 'text-gray-600';
+                    const catBg = CatDef?.bg || 'bg-gray-50';
+                    const payerName = users.find(u => u.id === expense.paidBy)?.name || t.unknown;
                     const isExpanded = expandedExpenseId === expense.id;
 
                     return (
@@ -701,7 +892,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                                     <div>
                                         <h3 className="font-bold text-stone-800">{expense.title}</h3>
                                         <p className="text-xs text-stone-500">
-                                            {payerName} 先付 • {expense.date}
+                                            {payerName} • {expense.date}
                                         </p>
                                     </div>
                                 </div>
@@ -709,7 +900,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                                     <div className="font-bold text-lg text-stone-800">{expense.amount.toLocaleString()}</div>
                                     {expense.isSettled ? (
                                         <div className="flex items-center justify-end gap-1 text-green-600 text-[10px] font-medium mt-0.5">
-                                            <CheckCircle2 size={10} /> <span>已結清</span>
+                                            <CheckCircle2 size={10} /> <span>{t.settled}</span>
                                         </div>
                                     ) : (
                                         isExpanded ? <ChevronUp size={16} className="text-stone-300 ml-auto mt-1" /> : <ChevronDown size={16} className="text-stone-300 ml-auto mt-1" />
@@ -721,7 +912,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                             {isExpanded && (
                                 <div className="bg-stone-50 border-t border-stone-100 p-4 animate-in slide-in-from-top-2">
                                     <div className="mb-4">
-                                        <h4 className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-2">分帳詳情</h4>
+                                        <h4 className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-2">{t.splitDetails}</h4>
                                         <div className="space-y-2">
                                             {(() => {
                                                 let details = [];
@@ -769,13 +960,13 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                                                 onClick={(e) => handleDelete(expense.id, e)}
                                                 className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-red-500 hover:bg-red-50 border border-transparent hover:border-red-100 transition-colors text-xs font-bold"
                                             >
-                                                <Trash2 size={14} /> 刪除
+                                                <Trash2 size={14} /> {t.delete}
                                             </button>
                                             <button 
                                                 onClick={(e) => handleEdit(expense, e)}
                                                 className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg bg-stone-800 text-white hover:bg-stone-700 transition-colors text-xs font-bold"
                                             >
-                                                <Pencil size={14} /> 編輯
+                                                <Pencil size={14} /> {t.edit}
                                             </button>
                                         </div>
                                     )}
@@ -799,20 +990,20 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
         <div className={`fixed inset-x-0 bottom-0 bg-white rounded-t-3xl shadow-[0_-4px_30px_rgba(0,0,0,0.1)] transition-transform duration-300 z-30 flex flex-col max-h-[85vh] ${isFormExpanded ? 'translate-y-0' : 'translate-y-full'}`}>
             <div className="p-4 border-b border-stone-100 flex items-center justify-between">
                 <button onClick={() => setIsFormExpanded(false)} className="text-stone-400 p-2"><ChevronDown size={24}/></button>
-                <h3 className="font-bold text-lg">{editingId ? '編輯支出' : '新增支出'}</h3>
+                <h3 className="font-bold text-lg">{editingId ? t.editExpense : t.addExpense}</h3>
                 <button 
                     onClick={handleSave}
                     disabled={!title || !amount}
                     className="text-white bg-stone-800 px-4 py-1.5 rounded-full text-sm font-medium disabled:opacity-50"
                 >
-                    儲存
+                    {t.save}
                 </button>
             </div>
             
             <div className="overflow-y-auto p-5 space-y-6 pb-10">
                 {/* Amount Input */}
                 <div className="text-center">
-                    <label className="text-xs font-bold text-stone-400 tracking-wider uppercase mb-2 block">金額 ({tripSettings.currency || 'THB'})</label>
+                    <label className="text-xs font-bold text-stone-400 tracking-wider uppercase mb-2 block">{t.amount} ({tripSettings.currency || 'THB'})</label>
                     <input 
                         type="number" 
                         value={amount}
@@ -829,28 +1020,30 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                         type="text" 
                         value={title}
                         onChange={(e) => setTitle(e.target.value)}
-                        placeholder="輸入項目名稱 (如: 晚餐、計程車)"
+                        placeholder={t.titlePlaceholder}
                         className="bg-transparent w-full outline-none text-stone-800"
                     />
                 </div>
 
                 {/* Categories */}
                 <div>
-                    <label className="text-xs font-bold text-stone-400 tracking-wider uppercase mb-3 block">類別</label>
+                    <label className="text-xs font-bold text-stone-400 tracking-wider uppercase mb-3 block">{t.category}</label>
                     <div className="grid grid-cols-4 gap-3">
-                        {CATEGORIES.map(cat => {
+                        {CATEGORIES_DEF.map(cat => {
                             const active = category === cat.id;
                             const Icon = cat.icon;
+                            // @ts-ignore
+                            const label = t.categories[cat.id];
                             return (
                                 <button
                                     key={cat.id}
-                                    onClick={() => setCategory(cat.id)}
+                                    onClick={() => setCategory(cat.id as any)}
                                     className={`flex flex-col items-center gap-2 p-3 rounded-xl border transition-all ${
                                         active ? `${cat.bg} ${cat.color} border-current` : 'bg-white border-stone-100 text-stone-400 hover:bg-stone-50'
                                     }`}
                                 >
                                     <Icon size={20} />
-                                    <span className="text-xs font-medium">{cat.label}</span>
+                                    <span className="text-xs font-medium">{label}</span>
                                 </button>
                             );
                         })}
@@ -860,7 +1053,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                 {/* Date & Payer */}
                 <div className="grid grid-cols-2 gap-4">
                     <div>
-                         <label className="text-xs font-bold text-stone-400 tracking-wider uppercase mb-2 block">日期</label>
+                         <label className="text-xs font-bold text-stone-400 tracking-wider uppercase mb-2 block">{t.date}</label>
                          <select 
                             value={selectedDate}
                             onChange={(e) => setSelectedDate(e.target.value)}
@@ -872,7 +1065,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                          </select>
                     </div>
                     <div>
-                         <label className="text-xs font-bold text-stone-400 tracking-wider uppercase mb-2 block">先付者</label>
+                         <label className="text-xs font-bold text-stone-400 tracking-wider uppercase mb-2 block">{t.payer}</label>
                          <select 
                             value={payer}
                             onChange={(e) => setPayer(e.target.value)}
@@ -888,9 +1081,9 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                 {/* Split Logic */}
                 <div className="pt-2">
                     <div className="flex bg-stone-100 rounded-lg p-1 mb-4">
-                        <button onClick={() => setSplitType('split')} className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${splitType === 'split' ? 'bg-white shadow-sm text-stone-800' : 'text-stone-500'}`}>平分</button>
-                        <button onClick={() => setSplitType('self')} className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${splitType === 'self' ? 'bg-white shadow-sm text-stone-800' : 'text-stone-500'}`}>個人</button>
-                        <button onClick={() => setSplitType('individual')} className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${splitType === 'individual' ? 'bg-white shadow-sm text-stone-800' : 'text-stone-500'}`}>個別</button>
+                        <button onClick={() => setSplitType('split')} className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${splitType === 'split' ? 'bg-white shadow-sm text-stone-800' : 'text-stone-500'}`}>{t.splitAvg}</button>
+                        <button onClick={() => setSplitType('self')} className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${splitType === 'self' ? 'bg-white shadow-sm text-stone-800' : 'text-stone-500'}`}>{t.splitSelf}</button>
+                        <button onClick={() => setSplitType('individual')} className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${splitType === 'individual' ? 'bg-white shadow-sm text-stone-800' : 'text-stone-500'}`}>{t.splitInd}</button>
                     </div>
                     
                     {splitType === 'split' && (
@@ -948,17 +1141,17 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
             <div className="absolute inset-0 z-50 bg-white flex flex-col animate-in slide-in-from-bottom-5">
                  <div className="p-4 border-b border-stone-100 flex items-center gap-3">
                      <button onClick={() => setShowDebtDetails(false)}><ArrowLeft size={20} /></button>
-                     <h2 className="font-bold text-lg">結算明細</h2>
+                     <h2 className="font-bold text-lg">{t.settleDetails}</h2>
                      <div className="flex-1" />
                      {!stats.allSettled && (
-                         <button onClick={handleSettleUp} className="text-xs bg-stone-800 text-white px-3 py-1.5 rounded-full shadow-sm hover:bg-stone-700 active:scale-95 transition-all">全部結清</button>
+                         <button onClick={handleSettleUp} className="text-xs bg-stone-800 text-white px-3 py-1.5 rounded-full shadow-sm hover:bg-stone-700 active:scale-95 transition-all">{t.settleAll}</button>
                      )}
                  </div>
                  <div className="p-5 overflow-y-auto space-y-6">
                      <div>
-                         <h3 className="text-xs font-bold text-stone-400 tracking-wider uppercase mb-3">應付/應收</h3>
+                         <h3 className="text-xs font-bold text-stone-400 tracking-wider uppercase mb-3">{t.owe}/{t.receive}</h3>
                          {stats.suggestedSettlements.length === 0 ? (
-                             <p className="text-stone-500 text-sm">目前沒有需要結算的款項。</p>
+                             <p className="text-stone-500 text-sm">{t.allSettled}</p>
                          ) : (
                              <div className="space-y-3">
                                  {stats.suggestedSettlements.map((s, i) => (
@@ -983,7 +1176,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
             <div className="absolute inset-0 z-50 bg-white flex flex-col animate-in slide-in-from-right-5">
                 <div className="p-4 border-b border-stone-100 flex items-center gap-3">
                     <button onClick={() => setShowUserManage(false)}><ArrowLeft size={20} /></button>
-                    <h2 className="font-bold text-lg">成員管理</h2>
+                    <h2 className="font-bold text-lg">{t.members}</h2>
                 </div>
                 <div className="p-5 overflow-y-auto">
                     <div className="flex gap-2 mb-6">
@@ -991,7 +1184,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                             type="text" 
                             value={newUserName}
                             onChange={(e) => setNewUserName(e.target.value)}
-                            placeholder="輸入新成員名字"
+                            placeholder={t.newMemberPlaceholder}
                             className="flex-1 bg-stone-50 border border-stone-200 rounded-xl px-4 py-2 text-sm outline-none"
                         />
                         <button onClick={handleAddUser} disabled={!newUserName} className="bg-stone-800 text-white px-4 rounded-xl disabled:opacity-50">
@@ -1001,19 +1194,47 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                     <div className="space-y-2">
                         {users.map(u => (
                             <div key={u.id} className="flex justify-between items-center p-3 bg-white border border-stone-100 rounded-xl shadow-sm">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 rounded-full bg-stone-100 flex items-center justify-center text-stone-500 text-xs font-bold">
-                                        {u.name[0]}
+                                {editingUserId === u.id ? (
+                                    <div className="flex items-center gap-2 flex-1">
+                                        <div className="w-8 h-8 rounded-full bg-stone-100 flex items-center justify-center text-stone-500 text-xs font-bold">
+                                            {u.name[0]}
+                                        </div>
+                                        <input 
+                                            type="text"
+                                            value={editNameVal}
+                                            onChange={(e) => setEditNameVal(e.target.value)}
+                                            className="flex-1 bg-stone-50 border border-stone-300 rounded px-2 py-1 text-sm outline-none"
+                                            autoFocus
+                                        />
+                                        <button onClick={handleUpdateUser} className="p-2 text-green-600 hover:bg-green-50 rounded-full">
+                                            <Check size={16} />
+                                        </button>
+                                        <button onClick={() => setEditingUserId(null)} className="p-2 text-stone-400 hover:bg-stone-50 rounded-full">
+                                            <X size={16} />
+                                        </button>
                                     </div>
-                                    <span className="font-medium">{u.name}</span>
-                                </div>
-                                <button onClick={() => handleRemoveUser(u.id)} className="text-stone-300 hover:text-red-400 p-2">
-                                    <Trash2 size={16} />
-                                </button>
+                                ) : (
+                                    <>
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-full bg-stone-100 flex items-center justify-center text-stone-500 text-xs font-bold">
+                                                {u.name[0]}
+                                            </div>
+                                            <span className="font-medium">{u.name}</span>
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <button onClick={() => startEditUser(u)} className="text-stone-300 hover:text-stone-600 p-2">
+                                                <Pencil size={16} />
+                                            </button>
+                                            <button onClick={() => handleRemoveUser(u.id)} className="text-stone-300 hover:text-red-400 p-2">
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         ))}
                     </div>
-                    <p className="text-xs text-stone-400 mt-4 text-center">注意：移除成員需該成員無任何消費紀錄。</p>
+                    <p className="text-xs text-stone-400 mt-4 text-center">{t.memberHint}</p>
                 </div>
             </div>
         )}
@@ -1023,7 +1244,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
             <div className="absolute inset-0 z-50 bg-white flex flex-col animate-in slide-in-from-right-5">
                 <div className="p-4 border-b border-stone-100 flex items-center gap-3">
                     <button onClick={() => setShowAuth(false)}><ArrowLeft size={20} /></button>
-                    <h2 className="font-bold text-lg">雲端同步</h2>
+                    <h2 className="font-bold text-lg">{t.sync}</h2>
                 </div>
                 <div className="p-6 flex flex-col items-center justify-center flex-1">
                     {firebaseError && (
@@ -1036,10 +1257,10 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                     {!isSyncMode ? (
                         <div className="w-full space-y-4">
                             <div className="bg-blue-50 p-4 rounded-xl text-blue-800 text-sm mb-4">
-                                輸入相同的群組 ID 與 PIN 碼，即可在多裝置間即時同步帳務。
+                                {t.syncHint}
                             </div>
                             <div>
-                                <label className="text-xs font-bold text-stone-400 uppercase mb-1 block">群組 ID (英文/數字)</label>
+                                <label className="text-xs font-bold text-stone-400 uppercase mb-1 block">{t.groupId}</label>
                                 <input 
                                     type="text" 
                                     value={tempGroupId}
@@ -1049,7 +1270,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                                 />
                             </div>
                             <div>
-                                <label className="text-xs font-bold text-stone-400 uppercase mb-1 block">PIN 碼 (密碼)</label>
+                                <label className="text-xs font-bold text-stone-400 uppercase mb-1 block">{t.pin}</label>
                                 <input 
                                     type="password" 
                                     value={tempPin}
@@ -1064,7 +1285,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                                 className="w-full bg-stone-800 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 mt-4 hover:bg-stone-700 disabled:opacity-50 transition-colors"
                             >
                                 <LogIn size={18} />
-                                <span>連線同步</span>
+                                <span>{t.syncConnect}</span>
                             </button>
                         </div>
                     ) : (
@@ -1073,15 +1294,15 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                                 <Cloud size={32} />
                             </div>
                             <div>
-                                <h3 className="font-bold text-xl text-stone-800 mb-1">已連線</h3>
-                                <p className="text-stone-500 text-sm">群組: {groupId}</p>
+                                <h3 className="font-bold text-xl text-stone-800 mb-1">{t.syncConnected}</h3>
+                                <p className="text-stone-500 text-sm">{t.groupId}: {groupId}</p>
                             </div>
                             <button 
                                 onClick={handleLogout}
                                 className="w-full bg-stone-100 text-stone-600 py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-red-50 hover:text-red-600 transition-colors"
                             >
                                 <LogOut size={18} />
-                                <span>中斷連線</span>
+                                <span>{t.syncDisconnect}</span>
                             </button>
                         </div>
                     )}
@@ -1094,11 +1315,11 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
              <div className="absolute inset-0 z-50 bg-white flex flex-col animate-in slide-in-from-right-5">
                 <div className="p-4 border-b border-stone-100 flex items-center gap-3">
                     <button onClick={() => setShowSettings(false)}><ArrowLeft size={20} /></button>
-                    <h2 className="font-bold text-lg">行程設定</h2>
+                    <h2 className="font-bold text-lg">{t.settings}</h2>
                 </div>
                 <div className="p-6 space-y-6 overflow-y-auto pb-10">
                     <div>
-                        <label className="text-xs font-bold text-stone-400 uppercase mb-2 block">開始日期</label>
+                        <label className="text-xs font-bold text-stone-400 uppercase mb-2 block">{t.startDate}</label>
                         <input 
                             type="date"
                             value={tempSettings.startDate}
@@ -1107,7 +1328,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                         />
                     </div>
                     <div>
-                        <label className="text-xs font-bold text-stone-400 uppercase mb-2 block">結束日期</label>
+                        <label className="text-xs font-bold text-stone-400 uppercase mb-2 block">{t.endDate}</label>
                         <input 
                             type="date"
                             value={tempSettings.endDate}
@@ -1117,7 +1338,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                     </div>
 
                     <div>
-                        <label className="text-xs font-bold text-stone-400 uppercase mb-2 block">行程幣別</label>
+                        <label className="text-xs font-bold text-stone-400 uppercase mb-2 block">{t.currency}</label>
                         <select 
                             value={tempSettings.currency || 'THB'}
                             onChange={(e) => setTempSettings(prev => ({ ...prev, currency: e.target.value }))}
@@ -1136,6 +1357,29 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                         )}
                     </div>
 
+                    {/* Language Selector */}
+                    <div>
+                        <label className="text-xs font-bold text-stone-400 uppercase mb-2 block">{t.language}</label>
+                        <div className="grid grid-cols-2 gap-3">
+                            <button
+                                onClick={() => setLanguage('zh')}
+                                className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl border transition-all ${
+                                    language === 'zh' ? 'bg-stone-800 text-white border-stone-800' : 'bg-white border-stone-200 text-stone-600'
+                                }`}
+                            >
+                                <span className="text-sm font-bold">繁體中文</span>
+                            </button>
+                            <button
+                                onClick={() => setLanguage('en')}
+                                className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl border transition-all ${
+                                    language === 'en' ? 'bg-stone-800 text-white border-stone-800' : 'bg-white border-stone-200 text-stone-600'
+                                }`}
+                            >
+                                <span className="text-sm font-bold">English</span>
+                            </button>
+                        </div>
+                    </div>
+
                     <button 
                         onClick={() => {
                             // Defensive: If unsettled, force currency to match original to prevent any potential UI state mismatch or undefined errors
@@ -1149,7 +1393,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                         className="w-full bg-stone-800 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2"
                     >
                         <Save size={18} />
-                        <span>儲存設定</span>
+                        <span>{t.save}</span>
                     </button>
                     
                     <button 
@@ -1157,7 +1401,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                         className="w-full bg-white text-stone-600 border border-stone-200 py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-stone-50 transition-colors"
                     >
                         <Download size={18} />
-                        <span>匯出支出紀錄 (.csv)</span>
+                        <span>{t.exportCSV}</span>
                     </button>
 
                      <button 
@@ -1165,12 +1409,20 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                         className="w-full bg-white text-red-500 border border-red-200 py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-red-50 transition-colors mt-6"
                     >
                         <RotateCcw size={18} />
-                        <span>重置應用程式</span>
+                        <span>{t.resetApp}</span>
                     </button>
 
-                    <p className="text-xs text-stone-400 text-center pb-4">
-                        修改日期將重新計算所有支出的天數歸屬。<br/>若處於同步模式，設定將同步至雲端。
+                    <p className="text-xs text-stone-400 text-center pb-0 whitespace-pre-line">
+                        {t.settingsHint}
                     </p>
+
+                    <div className="mt-8 mb-4 text-center">
+                         <h4 className="text-sm font-bold text-stone-800 mb-2">SenTrip Pay</h4>
+                         <p className="text-[10px] text-stone-400 leading-relaxed px-4">
+                            SenTrip Pay comes from Settle Expenses Now —<br/>
+                            built for trips, so you can pay fairly and enjoy the journey.
+                         </p>
+                    </div>
                 </div>
             </div>
         )}
@@ -1179,7 +1431,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
         {showSimpleCalc && (
             <div className="absolute inset-x-0 bottom-0 bg-stone-800 p-4 pb-8 z-50 rounded-t-3xl shadow-2xl animate-in slide-in-from-bottom-10">
                 <div className="flex justify-between items-center mb-4 text-white">
-                    <span className="text-sm font-bold opacity-50">CALCULATOR</span>
+                    <span className="text-sm font-bold opacity-50 uppercase">{t.calculator}</span>
                     <button onClick={() => setShowSimpleCalc(false)}><ChevronDown size={24}/></button>
                 </div>
                 <div className="bg-stone-900/50 p-4 rounded-xl mb-4 text-right">
@@ -1204,48 +1456,53 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
             <div className="absolute inset-0 z-50 bg-white flex flex-col animate-in slide-in-from-right-5">
                 <div className="p-4 border-b border-stone-100 flex items-center gap-3">
                     <button onClick={() => setShowExchange(false)}><ArrowLeft size={20} /></button>
-                    <h2 className="font-bold text-lg">匯率換算</h2>
+                    <h2 className="font-bold text-lg">{t.exchange}</h2>
                 </div>
-                <div className="p-6">
+                <div className="p-6 overflow-y-auto h-full pb-20">
                     <div className="bg-stone-50 rounded-2xl p-6 mb-6 text-center border border-stone-100">
-                         <div className="flex items-center justify-center gap-2 mb-4">
-                            {['THB', 'JPY', 'MYR'].map(curr => (
+                         <div className="flex items-center justify-center gap-2 mb-4 flex-wrap">
+                            {SUPPORTED_CURRENCIES
+                                .filter(c => c.code !== tripCurrency)
+                                .slice(0, 5) // Show top 5 to avoid clutter
+                                .map(c => (
                                 <button 
-                                    key={curr}
-                                    onClick={() => setCalcCurrency(curr)}
-                                    className={`px-4 py-1.5 rounded-full text-sm font-bold transition-colors ${calcCurrency === curr ? 'bg-stone-800 text-white' : 'text-stone-400'}`}
-                                >{curr}</button>
+                                    key={c.code}
+                                    onClick={() => setCalcCurrency(c.code)}
+                                    className={`px-4 py-1.5 rounded-full text-sm font-bold transition-colors ${calcCurrency === c.code ? 'bg-stone-800 text-white' : 'text-stone-400'}`}
+                                >{c.code}</button>
                             ))}
                          </div>
                          <input 
                             type="number" 
                             value={calcAmount}
                             onChange={(e) => setCalcAmount(e.target.value)}
-                            placeholder="輸入外幣金額"
+                            placeholder={t.inputForeign}
                             className="text-4xl font-bold text-center w-full bg-transparent outline-none mb-2"
                          />
                          <p className="text-stone-400 text-sm font-medium mb-4">
-                             ≈ {calculatedTWD.toLocaleString()} TWD
+                             ≈ {calculatedBaseAmount.toLocaleString()} {tripCurrency}
                          </p>
                          <div className="flex justify-center">
                              <button 
                                 onClick={() => { setAmount(calcAmount); setCategory('shopping'); setShowExchange(false); setIsFormExpanded(true); }}
                                 className="flex items-center gap-2 text-xs bg-white border border-stone-200 px-3 py-1.5 rounded-full shadow-sm active:scale-95 transition-transform"
                              >
-                                 <Plus size={14} /> 記一筆
+                                 <Plus size={14} /> {t.recordIt}
                              </button>
                          </div>
                     </div>
 
                     <div className="space-y-4">
-                        <h3 className="text-xs font-bold text-stone-400 uppercase tracking-wider">匯率設定 (對台幣)</h3>
-                        {['THB', 'JPY', 'MYR'].map(curr => (
-                            <div key={curr} className="flex items-center justify-between p-3 border border-stone-100 rounded-xl">
-                                <span className="font-bold text-stone-600">{curr} 匯率</span>
+                        <h3 className="text-xs font-bold text-stone-400 uppercase tracking-wider">{t.exchangeRate} ({t.unknown.replace('Unknown','to')} {tripCurrency})</h3>
+                        {SUPPORTED_CURRENCIES
+                            .filter(c => c.code !== tripCurrency)
+                            .map(c => (
+                            <div key={c.code} className="flex items-center justify-between p-3 border border-stone-100 rounded-xl">
+                                <span className="font-bold text-stone-600">{c.code}</span>
                                 <input 
                                     type="number" 
-                                    value={exchangeRates[curr] ?? ''}
-                                    onChange={(e) => handleRateChange(curr, e.target.value)}
+                                    value={exchangeRates[c.code] ?? ''}
+                                    onChange={(e) => handleRateChange(c.code, e.target.value)}
                                     className="w-20 text-right font-mono bg-stone-50 rounded px-2 py-1 outline-none focus:bg-stone-100"
                                 />
                             </div>
