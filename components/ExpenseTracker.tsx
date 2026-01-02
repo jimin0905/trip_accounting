@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, forwardRef, useImperativeHandle } from 'react';
-import { Plus, X, Trash2, ShoppingBag, Utensils, Bus, MoreHorizontal, Cloud, CloudOff, LogOut, LogIn, User, CheckCircle2, ArrowRightLeft, Users, MinusCircle, ChevronUp, ChevronDown, Pencil, Check, Receipt, Calculator, Delete, ArrowRight, ArrowLeft, Info, ChevronRight, Calendar, Save, Settings, Wallet, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, ShoppingBag, Utensils, Bus, MoreHorizontal, Cloud, CloudOff, LogOut, LogIn, Users, ChevronUp, ChevronDown, Pencil, Receipt, Calculator, Delete, ArrowRight, ArrowLeft, Info, Save, Settings, Wallet, AlertTriangle, ArrowRightLeft, CheckCircle2 } from 'lucide-react';
 import { Expense, UserProfile, TripSettings } from '../types';
 import { syncService } from '../services/firebase';
 
@@ -11,24 +11,25 @@ const CATEGORIES = [
   { id: 'other', label: '其他', icon: MoreHorizontal, color: 'text-gray-600', bg: 'bg-gray-50' },
 ] as const;
 
+// Sorted by Code ASC
 const SUPPORTED_CURRENCIES = [
-    { code: 'THB', label: '泰銖' },
-    { code: 'JPY', label: '日幣' },
-    { code: 'MYR', label: '馬幣' },
-    { code: 'KRW', label: '韓元' },
-    { code: 'USD', label: '美金' },
     { code: 'EUR', label: '歐元' },
+    { code: 'JPY', label: '日幣' },
+    { code: 'KRW', label: '韓元' },
+    { code: 'MYR', label: '馬幣' },
+    { code: 'THB', label: '泰銖' },
     { code: 'TWD', label: '台幣' },
+    { code: 'USD', label: '美金' },
 ];
 
 const DEFAULT_RATES: Record<string, number> = {
-    THB: 0.94,
-    MYR: 7.35,
+    EUR: 34.5,
     JPY: 0.21,
     KRW: 0.024,
+    MYR: 7.35,
+    THB: 0.94,
+    TWD: 1,
     USD: 31.5,
-    EUR: 34.5,
-    TWD: 1
 };
 
 interface Props {
@@ -65,7 +66,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
 
   // Tool States
   const [showExchange, setShowExchange] = useState(false);
-  const [calcCurrency, setCalcCurrency] = useState<string>('THB');
+  const [calcCurrency, setCalcCurrency] = useState<string>('TWD'); // Default TWD
   const [calcAmount, setCalcAmount] = useState('');
   const [showSimpleCalc, setShowSimpleCalc] = useState(false);
   const [simpleCalcDisplay, setSimpleCalcDisplay] = useState('');
@@ -95,7 +96,12 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
   useImperativeHandle(ref, () => ({
     pushSettings: async (newSettings: TripSettings) => {
       if (isSyncMode && syncService.isReady() && groupId && pin) {
-        await syncService.updateSettings(groupId, pin, newSettings);
+        try {
+            await syncService.updateSettings(groupId, pin, newSettings);
+        } catch (e: any) {
+            console.error(e);
+            alert(`設定同步失敗: ${e.message}`);
+        }
       }
     }
   }));
@@ -296,7 +302,8 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
       const newUsers = [...users, { id: `u_${Date.now()}`, name: newUserName.trim() }];
       setUsers(newUsers); setNewUserName('');
       if (isSyncMode && syncService.isReady()) {
-          try { await syncService.updateUsers(groupId, pin, newUsers); } catch(e) { console.error(e); }
+          try { await syncService.updateUsers(groupId, pin, newUsers); } 
+          catch(e: any) { console.error(e); alert(`新增成員失敗: ${e.message}`); }
       }
   };
 
@@ -305,7 +312,8 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
       const newUsers = users.filter(u => u.id !== id);
       setUsers(newUsers); if (payer === id) setPayer(newUsers[0].id);
       if (isSyncMode && syncService.isReady()) {
-          try { await syncService.updateUsers(groupId, pin, newUsers); } catch(e) { console.error(e); }
+          try { await syncService.updateUsers(groupId, pin, newUsers); } 
+          catch(e: any) { console.error(e); alert(`移除成員失敗: ${e.message}`); }
       }
   };
 
@@ -343,11 +351,25 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
         if (Math.abs(sum - totalVal) > 0.5) { alert(`總和不符`); return; }
     }
 
+    // Fix: Create payload without undefined properties for Firebase
     const payload: Expense = {
-      id: editingId || Date.now().toString(), title, amount: totalVal, category, dayId: getTripDayId(selectedDate), date: selectedDate,
+      id: editingId || Date.now().toString(),
+      title,
+      amount: totalVal,
+      category,
+      dayId: getTripDayId(selectedDate),
+      date: selectedDate,
       timestamp: editingId ? (expenses.find(e => e.id === editingId)?.timestamp || Date.now()) : Date.now(),
-      paidBy: currentPayerId, involvedUsers: finalInvolved, splitType, isSettled: false, individualAmounts: individualAmountsMap
+      paidBy: currentPayerId,
+      involvedUsers: finalInvolved,
+      splitType,
+      isSettled: false,
+      // individualAmounts is added below only if defined
     };
+
+    if (individualAmountsMap) {
+        payload.individualAmounts = individualAmountsMap;
+    }
 
     // Optimistic Update
     setExpenses(prev => {
@@ -360,9 +382,9 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
         try {
             if (editingId) await syncService.updateExpense(groupId, pin, payload);
             else await syncService.addExpense(groupId, pin, payload);
-        } catch (e) {
+        } catch (e: any) {
             console.error("Sync Error", e);
-            // Optional: Revert optimistic update here if critical
+            alert(`雲端同步失敗: ${e.message || '權限不足'}`);
         }
     }
   };
@@ -376,7 +398,8 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
     if (editingId === id) resetForm();
 
     if (isSyncMode && syncService.isReady()) {
-        try { await syncService.deleteExpense(groupId, pin, id); } catch(e) { console.error(e); }
+        try { await syncService.deleteExpense(groupId, pin, id); } 
+        catch(e: any) { console.error(e); alert(`刪除同步失敗: ${e.message}`); }
     }
   };
 
@@ -391,7 +414,8 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
       setShowDebtDetails(false);
 
       if (isSyncMode && syncService.isReady()) {
-          try { await syncService.settleExpenses(groupId, pin, unsettledIds); } catch(err) { console.error(err); alert("同步結清狀態失敗，但本地已更新。"); }
+          try { await syncService.settleExpenses(groupId, pin, unsettledIds); } 
+          catch(err: any) { console.error(err); alert(`結清同步失敗: ${err.message}`); }
       }
   };
 

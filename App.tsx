@@ -13,7 +13,8 @@ const App: React.FC = () => {
     nextWeek.setDate(today.getDate() + 5);
     
     const fmt = (d: Date) => d.toISOString().split('T')[0];
-    const defaultSettings = { startDate: fmt(today), endDate: fmt(nextWeek), currency: 'THB' };
+    // Changed default to TWD
+    const defaultSettings = { startDate: fmt(today), endDate: fmt(nextWeek), currency: 'TWD' };
 
     if (saved) {
       const parsed = JSON.parse(saved);
@@ -44,7 +45,7 @@ const App: React.FC = () => {
         Container Logic:
         - Mobile: Full width, full height
         - Desktop: Centered card like a mobile app simulator
-        - Background Colors Updated: Outer #EEECE6, Inner #FDFBF6
+        - Background Colors: Outer #EEECE6, Inner #FDFBF6
       */}
       <div className="w-full sm:max-w-[450px] h-[100dvh] sm:h-[850px] bg-[#FDFBF6] sm:rounded-[2.5rem] sm:shadow-2xl sm:border-[8px] sm:border-stone-800 overflow-hidden relative flex flex-col">
         <ExpenseTracker 

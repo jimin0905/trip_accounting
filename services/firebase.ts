@@ -89,6 +89,19 @@ try {
     console.error("Firebase initialization failed:", e);
 }
 
+// Helper to catch and format permission errors
+const handleFirebaseOperation = async (operation: () => Promise<void>) => {
+    try {
+        await operation();
+    } catch (error: any) {
+        if (error.code === 'PERMISSION_DENIED' || error.message?.includes('PERMISSION_DENIED')) {
+            console.error("🔥 Firebase Permission Denied! Please check your Realtime Database Rules.");
+            throw new Error("權限不足 (Permission Denied)。請至 Firebase Console 檢查 Database Rules 是否設為公開或已登入。");
+        }
+        throw error;
+    }
+};
+
 const ensureAuth = async () => {
     if (!isInitialized || !auth) throw new Error("Firebase not initialized");
     if (auth.currentUser) return auth.currentUser;
@@ -96,6 +109,7 @@ const ensureAuth = async () => {
         const userCredential = await signInAnonymously(auth);
         return userCredential.user;
     } catch (error: any) {
+        console.error("Auth Error:", error);
         throw error;
     }
 };
@@ -104,7 +118,6 @@ const getSecureBasePath = async (groupId: string, pin: string) => {
     if (!groupId || !pin) throw new Error("ID and PIN required");
     const raw = `${groupId.trim()}_${pin.trim()}_BKK_SECRET_SALT`;
     
-    // Simple hash for insecure contexts (http) or fallback
     const simpleHash = (str: string) => {
         let hash = 0;
         for (let i = 0; i < str.length; i++) {
@@ -153,16 +166,13 @@ export const syncService = {
             const unsubscribe = onValue(tripRef, (snapshot) => {
                 const val = snapshot.val() || {};
                 
-                // Parse Expenses: Ensure it's an array even if Firebase returns an object
                 const expensesRaw = val.expenses || {};
                 const expenseList = Array.isArray(expensesRaw) 
                     ? expensesRaw 
                     : Object.values(expensesRaw) as Expense[];
                 
-                // Sort expenses
                 expenseList.sort((a, b) => b.timestamp - a.timestamp);
 
-                // Parse Users: Ensure it's an array even if Firebase returns an object (common issue)
                 const usersRaw = val.users || [];
                 const usersList = Array.isArray(usersRaw)
                     ? usersRaw
@@ -174,7 +184,12 @@ export const syncService = {
                 onStatus("");
             }, (error) => {
                 console.error("Firebase Read Error", error);
-                onStatus("❌ 連線錯誤");
+                if (error.message.includes("permission_denied")) {
+                    onStatus("⛔ 權限不足");
+                    alert("讀取失敗：權限不足。請檢查 Firebase Rules。");
+                } else {
+                    onStatus("❌ 連線錯誤");
+                }
             });
 
             return () => off(tripRef, 'value', unsubscribe);
@@ -187,47 +202,59 @@ export const syncService = {
 
     addExpense: async (groupId: string, pin: string, expense: Expense) => {
         if (!isInitialized || !db) return;
-        await ensureAuth();
-        const path = await getSecureBasePath(groupId, pin);
-        await set(ref(db, `${path}/expenses/${expense.id}`), expense);
+        await handleFirebaseOperation(async () => {
+            await ensureAuth();
+            const path = await getSecureBasePath(groupId, pin);
+            await set(ref(db, `${path}/expenses/${expense.id}`), expense);
+        });
     },
 
     updateExpense: async (groupId: string, pin: string, expense: Expense) => {
         if (!isInitialized || !db) return;
-        await ensureAuth();
-        const path = await getSecureBasePath(groupId, pin);
-        await set(ref(db, `${path}/expenses/${expense.id}`), expense);
+        await handleFirebaseOperation(async () => {
+            await ensureAuth();
+            const path = await getSecureBasePath(groupId, pin);
+            await set(ref(db, `${path}/expenses/${expense.id}`), expense);
+        });
     },
 
     deleteExpense: async (groupId: string, pin: string, expenseId: string) => {
         if (!isInitialized || !db) return;
-        await ensureAuth();
-        const path = await getSecureBasePath(groupId, pin);
-        await remove(ref(db, `${path}/expenses/${expenseId}`));
+        await handleFirebaseOperation(async () => {
+            await ensureAuth();
+            const path = await getSecureBasePath(groupId, pin);
+            await remove(ref(db, `${path}/expenses/${expenseId}`));
+        });
     },
 
     settleExpenses: async (groupId: string, pin: string, expenseIds: string[]) => {
         if (!isInitialized || !db) return;
-        await ensureAuth();
-        const path = await getSecureBasePath(groupId, pin);
-        const updates: Record<string, any> = {};
-        expenseIds.forEach(id => {
-            updates[`${path}/expenses/${id}/isSettled`] = true;
+        await handleFirebaseOperation(async () => {
+            await ensureAuth();
+            const path = await getSecureBasePath(groupId, pin);
+            const updates: Record<string, any> = {};
+            expenseIds.forEach(id => {
+                updates[`${path}/expenses/${id}/isSettled`] = true;
+            });
+            await update(ref(db), updates);
         });
-        await update(ref(db), updates);
     },
 
     updateUsers: async (groupId: string, pin: string, users: UserProfile[]) => {
         if (!isInitialized || !db) return;
-        await ensureAuth();
-        const path = await getSecureBasePath(groupId, pin);
-        await set(ref(db, `${path}/users`), users);
+        await handleFirebaseOperation(async () => {
+            await ensureAuth();
+            const path = await getSecureBasePath(groupId, pin);
+            await set(ref(db, `${path}/users`), users);
+        });
     },
 
     updateSettings: async (groupId: string, pin: string, settings: TripSettings) => {
         if (!isInitialized || !db) return;
-        await ensureAuth();
-        const path = await getSecureBasePath(groupId, pin);
-        await set(ref(db, `${path}/settings`), settings);
+        await handleFirebaseOperation(async () => {
+            await ensureAuth();
+            const path = await getSecureBasePath(groupId, pin);
+            await set(ref(db, `${path}/settings`), settings);
+        });
     }
 };

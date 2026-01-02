@@ -1,0 +1,9 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 
+  此檔案是為了避免瀏覽器報 404 錯誤。
+  主要樣式已透過 CDN 的 Tailwind CSS 載入。
+*/
