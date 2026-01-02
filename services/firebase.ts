@@ -1,6 +1,6 @@
 
 import { initializeApp, FirebaseApp } from "firebase/app";
-import { getDatabase, ref, set, remove, update, onValue, off, Database } from "firebase/database";
+import { getDatabase, ref, set, remove, update, onValue, off, get, Database } from "firebase/database";
 import { getAuth, signInAnonymously, Auth } from "firebase/auth";
 import { Expense, UserProfile, TripSettings } from "../types";
 
@@ -145,6 +145,20 @@ const getSecureBasePath = async (groupId: string, pin: string) => {
 
 export const syncService = {
     isReady: () => isInitialized,
+
+    checkDataExists: async (groupId: string, pin: string) => {
+        if (!isInitialized || !db) return false;
+        try {
+            await ensureAuth();
+            const path = await getSecureBasePath(groupId, pin);
+            const snapshot = await get(ref(db, path));
+            return snapshot.exists();
+        } catch (e) {
+            console.error("Check Exists Error", e);
+            // Default to false so we try to initialize if unsure
+            return false;
+        }
+    },
 
     subscribe: async (
         groupId: string, 

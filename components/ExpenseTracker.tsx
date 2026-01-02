@@ -284,10 +284,36 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
     return expenses.filter(e => (filterDate === 'all' || e.date === filterDate) && (filterPayer === 'all' || e.paidBy === filterPayer));
   }, [expenses, filterDate, filterPayer]);
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
       if (!tempGroupId || !tempPin) return;
-      setGroupId(tempGroupId); setPin(tempPin); setIsSyncMode(true); setShowAuth(false);
-      localStorage.setItem('bkk_sync_session', JSON.stringify({ g: tempGroupId, p: tempPin }));
+
+      const gId = tempGroupId;
+      const pCode = tempPin;
+      
+      setGroupId(gId); setPin(pCode); setIsSyncMode(true); setShowAuth(false);
+      localStorage.setItem('bkk_sync_session', JSON.stringify({ g: gId, p: pCode }));
+
+      // Auto-initialize cloud if empty
+      if (syncService.isReady()) {
+         try {
+             // We check if the group exists on the cloud
+             const hasData = await syncService.checkDataExists(gId, pCode);
+             if (!hasData) {
+                 console.log("Initializing new cloud group with local data...");
+                 // Push local users and settings to initialize the group
+                 await syncService.updateUsers(gId, pCode, users);
+                 await syncService.updateSettings(gId, pCode, tripSettings);
+                 // Also push current expenses if any
+                 if (expenses.length > 0) {
+                     for (const exp of expenses) {
+                         await syncService.addExpense(gId, pCode, exp);
+                     }
+                 }
+             }
+         } catch (e) {
+             console.error("Auto-initialization failed", e);
+         }
+      }
   };
 
   const handleLogout = () => {
