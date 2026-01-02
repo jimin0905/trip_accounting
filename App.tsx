@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { TripSettings } from './types';
 import ExpenseTracker from './components/ExpenseTracker';
 
@@ -31,13 +31,24 @@ const App: React.FC = () => {
     localStorage.setItem('bkk_trip_settings', JSON.stringify(tripSettings));
   }, [tripSettings]);
 
-  const handleSettingsUpdate = async (newSettings: TripSettings) => {
+  // Use useCallback to prevent infinite loops in ExpenseTracker's useEffect
+  const handleSettingsSync = useCallback((cloudSettings: TripSettings) => {
+    setTripSettings(prev => {
+        // Simple comparison to avoid redundant updates
+        if (JSON.stringify(prev) !== JSON.stringify(cloudSettings)) {
+            return cloudSettings;
+        }
+        return prev;
+    });
+  }, []);
+
+  const handleSettingsUpdate = useCallback(async (newSettings: TripSettings) => {
     setTripSettings(newSettings);
     // Push new settings to Firebase if connected
     if (expenseTrackerRef.current) {
       await expenseTrackerRef.current.pushSettings(newSettings);
     }
-  };
+  }, []);
 
   return (
     <div className="min-h-screen font-sans text-stone-800 bg-[#EEECE6] flex justify-center sm:items-center sm:py-8">
@@ -51,7 +62,7 @@ const App: React.FC = () => {
         <ExpenseTracker 
           ref={expenseTrackerRef}
           tripSettings={tripSettings}
-          onSettingsSync={(cloudSettings) => setTripSettings(cloudSettings)}
+          onSettingsSync={handleSettingsSync}
           onUpdateLocalSettings={handleSettingsUpdate}
         />
       </div>

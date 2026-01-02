@@ -173,10 +173,20 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
 
     const setupSync = async () => {
         if (isSyncMode && groupId && pin && syncService.isReady()) {
-            setConnectionStatus('啟動中...');
+            // Don't show "Verifying" instantly to prevent flash, wait for real status
             try {
                 const unsub = await syncService.subscribe(groupId, pin, 
-                    (status) => { if (active) setConnectionStatus(status); },
+                    (status) => { 
+                        if (active) {
+                            // If status is empty (success), show "已同步"
+                            // If status is "Verifying...", only show if it takes time or first load
+                            if (status === "") {
+                                setConnectionStatus("已同步");
+                            } else {
+                                setConnectionStatus(status); 
+                            }
+                        }
+                    },
                     (data) => {
                         if (!active) return;
                         setExpenses(data.expenses);
@@ -509,7 +519,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                     }`}
                 >
                    {isSyncMode ? <Cloud size={14} /> : <CloudOff size={14} />}
-                   <span>{connectionStatus || (isSyncMode ? '已連線' : '離線')}</span>
+                   <span>{connectionStatus || (isSyncMode ? '已同步' : '離線')}</span>
                 </button>
                 <button onClick={() => toggleWidget('settings')} className="text-stone-400 hover:text-stone-600">
                     <Settings size={20} />
