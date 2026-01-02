@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useMemo, forwardRef, useImperativeHandle } from 'react';
-import { Plus, Trash2, ShoppingBag, Utensils, Bus, MoreHorizontal, Cloud, CloudOff, LogOut, LogIn, Users, ChevronUp, ChevronDown, Pencil, Receipt, Calculator, Delete, ArrowRight, ArrowLeft, Info, Save, Settings, Wallet, AlertTriangle, ArrowRightLeft, CheckCircle2, Download, RotateCcw, Check, X, Globe } from 'lucide-react';
+import React, { useState, useEffect, useMemo, forwardRef, useImperativeHandle, useRef } from 'react';
+import { Plus, Trash2, ShoppingBag, Utensils, Bus, MoreHorizontal, Cloud, CloudOff, LogOut, LogIn, Users, ChevronUp, ChevronDown, Pencil, Receipt, Calculator, Delete, ArrowRight, ArrowLeft, Info, Save, Settings, Wallet, AlertTriangle, ArrowRightLeft, CheckCircle2, Download, RotateCcw, Check, X, Globe, BarChart3 } from 'lucide-react';
 import { Expense, UserProfile, TripSettings } from '../types';
 import { syncService } from '../services/firebase';
 
@@ -11,6 +11,9 @@ const TRANSLATIONS = {
         appName: 'SenTrip Pay',
         totalExpense: '總支出',
         checkDetails: '查看分帳',
+        viewStats: '消費統計',
+        statSpent: '個人消費 (花了)',
+        statAdvanced: '代墊金額 (墊了)',
         settleDetails: '結算明細',
         settleAll: '全部結清',
         allSettled: '目前沒有需要結算的款項。',
@@ -34,7 +37,7 @@ const TRANSLATIONS = {
         titlePlaceholder: '輸入項目名稱 (如: 晚餐、計程車)',
         category: '類別',
         date: '日期',
-        payer: '先付者',
+        payer: '付款者',
         splitType: '分帳方式',
         splitAvg: '平分',
         splitSelf: '個人',
@@ -80,7 +83,10 @@ const TRANSLATIONS = {
     en: {
         appName: 'SenTrip Pay',
         totalExpense: 'Total Expense',
-        checkDetails: 'View Debts',
+        checkDetails: 'Debts',
+        viewStats: 'Stats',
+        statSpent: 'Spent',
+        statAdvanced: 'Advanced',
         settleDetails: 'Settlement',
         settleAll: 'Settle All',
         allSettled: 'All expenses are settled.',
@@ -104,7 +110,7 @@ const TRANSLATIONS = {
         titlePlaceholder: 'Item name (e.g. Dinner, Taxi)',
         category: 'Category',
         date: 'Date',
-        payer: 'Paid By',
+        payer: 'Payer',
         splitType: 'Split By',
         splitAvg: 'Equal',
         splitSelf: 'Self',
@@ -203,6 +209,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
   // UI States
   const [showUserManage, setShowUserManage] = useState(false);
   const [showDebtDetails, setShowDebtDetails] = useState(false);
+  const [showStats, setShowStats] = useState(false);
   
   // Accordion State
   const [expandedExpenseId, setExpandedExpenseId] = useState<string | null>(null);
@@ -265,6 +272,8 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
   }, [users]);
 
   // --- History API Logic for Mobile Back Button ---
+  const historyEnabled = useRef(true);
+
   const closeAllWidgets = () => { 
       setShowSimpleCalc(false); 
       setShowExchange(false); 
@@ -274,15 +283,28 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
       setExpandedExpenseId(null); 
       setIsFormExpanded(false); 
       setShowDebtDetails(false); 
+      setShowStats(false);
   };
 
   const goBack = () => {
-      window.history.back();
+      if (historyEnabled.current) {
+        window.history.back();
+      } else {
+        closeAllWidgets();
+      }
   };
 
   const openModal = (hash: string, openLogic: () => void) => {
-      window.history.pushState({ modal: hash }, '', `#${hash}`);
-      openLogic();
+      try {
+        if (historyEnabled.current) {
+            window.history.pushState({ modal: hash }, '', `#${hash}`);
+        }
+        openLogic();
+      } catch (e) {
+        console.warn("History pushState blocked (sandbox mode). Falling back to modal-only mode.");
+        historyEnabled.current = false;
+        openLogic();
+      }
   };
 
   useEffect(() => {
@@ -488,6 +510,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
           }
 
           if (userPaidForOthers[e.paidBy] !== undefined) {
+              // userPaidForOthers represents "Advance Payment" (Total Paid - Own Share)
               userPaidForOthers[e.paidBy] += (totalAmt - payerShare);
           }
           if (!e.isSettled && unsettledNet[e.paidBy] !== undefined) {
@@ -905,12 +928,21 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                                 <div className="w-6 h-6 rounded-full bg-stone-700 border border-stone-800 flex items-center justify-center text-[10px]">+</div>
                             )}
                         </div>
-                        <button 
-                            onClick={() => openModal('debt', () => setShowDebtDetails(true))}
-                            className="text-xs bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-full transition-colors"
-                        >
-                            {t.checkDetails}
-                        </button>
+                        <div className="flex gap-2">
+                            <button 
+                                onClick={() => openModal('stats', () => setShowStats(true))}
+                                className="text-xs bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-full transition-colors flex items-center gap-1"
+                            >
+                                <BarChart3 size={14} />
+                                {t.viewStats}
+                            </button>
+                            <button 
+                                onClick={() => openModal('debt', () => setShowDebtDetails(true))}
+                                className="text-xs bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-full transition-colors"
+                            >
+                                {t.checkDetails}
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -981,9 +1013,12 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                                     </div>
                                     <div>
                                         <h3 className="font-bold text-stone-800">{expense.title}</h3>
-                                        <p className="text-xs text-stone-500">
-                                            {payerName} • {expense.date}
-                                        </p>
+                                        <div className="flex items-center gap-1.5 mt-0.5">
+                                            <span className="text-[10px] bg-stone-100 text-stone-600 px-1.5 py-0.5 rounded font-medium border border-stone-200">
+                                                {t.payer}: {payerName.length > 24 ? payerName.slice(0, 24) + '...' : payerName}
+                                            </span>
+                                            <span className="text-xs text-stone-400">• {expense.date}</span>
+                                        </div>
                                     </div>
                                 </div>
                                 <div className="text-right">
@@ -1031,13 +1066,22 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
 
                                                 return details.map((d, i) => (
                                                     <div key={i} className="flex justify-between items-center text-sm">
-                                                        <div className="flex items-center gap-2">
-                                                            <div className="w-5 h-5 rounded-full bg-stone-200 flex items-center justify-center text-[8px] text-stone-500 font-bold">
+                                                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                                                            <div className="w-5 h-5 rounded-full bg-stone-200 flex items-center justify-center text-[8px] text-stone-500 font-bold flex-shrink-0">
                                                                 {avatarLabels[d.id]}
                                                             </div>
-                                                            <span className="text-stone-600">{d.name}</span>
+                                                            <div className="flex items-center gap-1 overflow-hidden">
+                                                                <span className="text-stone-600 truncate">
+                                                                    {d.name.length > 24 ? d.name.slice(0, 24) + '...' : d.name}
+                                                                </span>
+                                                                {d.id === expense.paidBy && (
+                                                                    <span className="ml-1 text-[9px] bg-stone-600 text-white px-1.5 py-0.5 rounded-full flex-shrink-0 font-medium">
+                                                                        {t.payer}
+                                                                    </span>
+                                                                )}
+                                                            </div>
                                                         </div>
-                                                        <span className="font-medium text-stone-700">{Number(d.amount).toFixed(1)}</span>
+                                                        <span className="font-medium text-stone-700 ml-2">{Number(d.amount).toFixed(1)}</span>
                                                     </div>
                                                 ));
                                             })()}
@@ -1226,6 +1270,42 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
 
         {/* --- Widgets --- */}
         
+        {/* Statistics Modal (New) */}
+        {showStats && (
+            <div className="absolute inset-0 z-50 bg-white flex flex-col animate-in slide-in-from-bottom-5">
+                 <div className="p-4 border-b border-stone-100 flex items-center gap-3">
+                     <button onClick={goBack}><ArrowLeft size={20} /></button>
+                     <h2 className="font-bold text-lg">{t.viewStats}</h2>
+                 </div>
+                 <div className="p-5 overflow-y-auto space-y-4">
+                     <div className="grid grid-cols-2 gap-4 text-xs font-bold text-stone-400 uppercase tracking-wider mb-2 px-3">
+                        <div>{t.statSpent}</div>
+                        <div className="text-right">{t.statAdvanced}</div>
+                     </div>
+                     {users.map(u => (
+                         <div key={u.id} className="bg-stone-50 p-4 rounded-xl border border-stone-100 flex items-center justify-between">
+                             <div className="flex items-center gap-3">
+                                 <div className="w-10 h-10 rounded-full bg-white border border-stone-200 flex items-center justify-center text-stone-600 text-sm font-bold shadow-sm">
+                                     {avatarLabels[u.id]}
+                                 </div>
+                                 <div className="flex flex-col">
+                                     <span className="font-bold text-stone-800">{u.name}</span>
+                                     <span className="text-sm font-medium text-stone-500">
+                                         {Math.round(stats.userConsumedTotal[u.id] || 0).toLocaleString()}
+                                     </span>
+                                 </div>
+                             </div>
+                             <div className="text-right">
+                                 <span className={`text-lg font-bold ${stats.userPaidForOthers[u.id] > 0 ? 'text-orange-600' : 'text-stone-300'}`}>
+                                     {Math.round(stats.userPaidForOthers[u.id] || 0).toLocaleString()}
+                                 </span>
+                             </div>
+                         </div>
+                     ))}
+                 </div>
+            </div>
+        )}
+
         {/* Debt Details Modal */}
         {showDebtDetails && (
             <div className="absolute inset-0 z-50 bg-white flex flex-col animate-in slide-in-from-bottom-5">
