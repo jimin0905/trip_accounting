@@ -7,14 +7,14 @@ const App: React.FC = () => {
   // Trip Settings Management
   const [tripSettings, setTripSettings] = useState<TripSettings>(() => {
     const saved = localStorage.getItem('bkk_trip_settings');
-    // Default to a recent/upcoming date range if nothing saved
-    const today = new Date();
-    const nextWeek = new Date(today);
-    nextWeek.setDate(today.getDate() + 5);
     
+    // Default: Start Today, End Today
+    const today = new Date();
     const fmt = (d: Date) => d.toISOString().split('T')[0];
-    // Changed default to TWD
-    const defaultSettings = { startDate: fmt(today), endDate: fmt(nextWeek), currency: 'TWD' };
+    const todayStr = fmt(today);
+
+    // Default settings if nothing is saved in localStorage
+    const defaultSettings = { startDate: todayStr, endDate: todayStr, currency: 'TWD' };
 
     if (saved) {
       const parsed = JSON.parse(saved);

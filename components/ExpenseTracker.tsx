@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, forwardRef, useImperativeHandle } from 'react';
-import { Plus, Trash2, ShoppingBag, Utensils, Bus, MoreHorizontal, Cloud, CloudOff, LogOut, LogIn, Users, ChevronUp, ChevronDown, Pencil, Receipt, Calculator, Delete, ArrowRight, ArrowLeft, Info, Save, Settings, Wallet, AlertTriangle, ArrowRightLeft, CheckCircle2 } from 'lucide-react';
+import { Plus, Trash2, ShoppingBag, Utensils, Bus, MoreHorizontal, Cloud, CloudOff, LogOut, LogIn, Users, ChevronUp, ChevronDown, Pencil, Receipt, Calculator, Delete, ArrowRight, ArrowLeft, Info, Save, Settings, Wallet, AlertTriangle, ArrowRightLeft, CheckCircle2, Download, RotateCcw } from 'lucide-react';
 import { Expense, UserProfile, TripSettings } from '../types';
 import { syncService } from '../services/firebase';
 
@@ -452,6 +452,78 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
       if (isSyncMode && syncService.isReady()) {
           try { await syncService.settleExpenses(groupId, pin, unsettledIds); } 
           catch(err: any) { console.error(err); alert(`結清同步失敗: ${err.message}`); }
+      }
+  };
+
+  const handleExportCSV = () => {
+    if (expenses.length === 0) {
+        alert("目前沒有任何支出紀錄可供匯出。");
+        return;
+    }
+
+    const headers = ["日期", "項目", "類別", "金額", "幣別", "先付者", "分帳方式", "分帳詳情", "狀態"];
+    const rows = expenses.map(e => {
+        const payerName = users.find(u => u.id === e.paidBy)?.name || 'Unknown';
+        const categoryLabel = CATEGORIES.find(c => c.id === e.category)?.label || e.category;
+        const status = e.isSettled ? "已結清" : "未結清";
+        const splitLabel = e.splitType === 'split' ? "平分" : e.splitType === 'self' ? "個人" : "個別";
+        
+        // Format Details
+        let details = "";
+        if (e.splitType === 'self') {
+            details = `${payerName}: ${e.amount}`;
+        } else if (e.splitType === 'split') {
+            const participants = e.involvedUsers?.length ? e.involvedUsers : users.map(u => u.id);
+            const share = (e.amount / participants.length).toFixed(1);
+            details = participants.map(uid => `${users.find(u => u.id === uid)?.name}: ${share}`).join(" | ");
+        } else if (e.individualAmounts) {
+            details = Object.entries(e.individualAmounts).map(([uid, amt]) => `${users.find(u => u.id === uid)?.name}: ${amt}`).join(" | ");
+        }
+
+        // Escape comma in title and details
+        const safeTitle = `"${e.title.replace(/"/g, '""')}"`;
+        const safeDetails = `"${details.replace(/"/g, '""')}"`;
+
+        return [
+            e.date || '',
+            safeTitle,
+            categoryLabel,
+            e.amount,
+            tripSettings.currency || 'THB',
+            payerName,
+            splitLabel,
+            safeDetails,
+            status
+        ].join(",");
+    });
+
+    const csvContent = "\uFEFF" + [headers.join(","), ...rows].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `TripLedger_Export_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleFactoryReset = () => {
+      if (window.confirm("⚠️即將重置應用程式\n\n此動作將：\n1. 斷開雲端同步連線\n2. 清空所有本機儲存資料\n3. 回復至初始狀態\n\n若資料未同步至雲端，將會永久遺失。\n\n確定要繼續嗎？")) {
+          // 1. Disconnect Sync
+          setIsSyncMode(false);
+          setGroupId('');
+          setPin('');
+
+          // 2. Clear Local Storage
+          localStorage.removeItem('bkk_expenses_2025');
+          localStorage.removeItem('bkk_users_2025');
+          localStorage.removeItem('bkk_trip_settings');
+          localStorage.removeItem('bkk_sync_session');
+          localStorage.removeItem('bkk_exchange_rates');
+
+          // 3. Force Reload to reset all states
+          window.location.reload();
       }
   };
 
@@ -1024,7 +1096,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                     <button onClick={() => setShowSettings(false)}><ArrowLeft size={20} /></button>
                     <h2 className="font-bold text-lg">行程設定</h2>
                 </div>
-                <div className="p-6 space-y-6">
+                <div className="p-6 space-y-6 overflow-y-auto pb-10">
                     <div>
                         <label className="text-xs font-bold text-stone-400 uppercase mb-2 block">開始日期</label>
                         <input 
@@ -1079,7 +1151,24 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                         <Save size={18} />
                         <span>儲存設定</span>
                     </button>
-                    <p className="text-xs text-stone-400 text-center">
+                    
+                    <button 
+                        onClick={handleExportCSV}
+                        className="w-full bg-white text-stone-600 border border-stone-200 py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-stone-50 transition-colors"
+                    >
+                        <Download size={18} />
+                        <span>匯出支出紀錄 (.csv)</span>
+                    </button>
+
+                     <button 
+                        onClick={handleFactoryReset}
+                        className="w-full bg-white text-red-500 border border-red-200 py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-red-50 transition-colors mt-6"
+                    >
+                        <RotateCcw size={18} />
+                        <span>重置應用程式</span>
+                    </button>
+
+                    <p className="text-xs text-stone-400 text-center pb-4">
                         修改日期將重新計算所有支出的天數歸屬。<br/>若處於同步模式，設定將同步至雲端。
                     </p>
                 </div>
