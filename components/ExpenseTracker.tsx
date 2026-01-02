@@ -56,6 +56,7 @@ const TRANSLATIONS = {
         startDate: '開始日期',
         endDate: '結束日期',
         currency: '行程幣別',
+        currencyChangeWarn: '需結清所有款項才能變更幣別',
         language: '語言 / Language',
         resetApp: '重置應用程式',
         exportCSV: '匯出支出紀錄 (.csv)',
@@ -125,6 +126,7 @@ const TRANSLATIONS = {
         startDate: 'Start Date',
         endDate: 'End Date',
         currency: 'Currency',
+        currencyChangeWarn: 'Settle all expenses before changing currency',
         language: 'Language',
         resetApp: 'Reset App',
         exportCSV: 'Export CSV',
@@ -183,7 +185,7 @@ interface Props {
 
 const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Promise<void> }, Props>(({ tripSettings, onSettingsSync, onUpdateLocalSettings }, ref) => {
   const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [users, setUsers] = useState<UserProfile[]>([{ id: 'u1', name: '我' }]);
+  const [users, setUsers] = useState<UserProfile[]>([{ id: 'u1', name: 'User' }]);
   
   // Language State
   const [language, setLanguage] = useState<Language>(() => {
@@ -235,6 +237,61 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
       const saved = localStorage.getItem('bkk_exchange_rates');
       return saved ? { ...DEFAULT_RATES, ...JSON.parse(saved) } : DEFAULT_RATES;
   });
+
+  // --- Avatar Logic: Handle duplicates (e.g. A1, A2) ---
+  const avatarLabels = useMemo(() => {
+      const map: Record<string, string> = {};
+      const charCounts: Record<string, number> = {};
+      const charIndices: Record<string, number> = {};
+
+      // First pass: Count occurrences of first char
+      users.forEach(u => {
+          const char = (u.name[0] || '?').toUpperCase();
+          charCounts[char] = (charCounts[char] || 0) + 1;
+      });
+
+      // Second pass: Assign labels
+      users.forEach(u => {
+          const char = (u.name[0] || '?').toUpperCase();
+          if (charCounts[char] > 1) {
+              const index = (charIndices[char] || 0) + 1;
+              charIndices[char] = index;
+              map[u.id] = `${char}${index}`;
+          } else {
+              map[u.id] = char;
+          }
+      });
+      return map;
+  }, [users]);
+
+  // --- History API Logic for Mobile Back Button ---
+  const closeAllWidgets = () => { 
+      setShowSimpleCalc(false); 
+      setShowExchange(false); 
+      setShowUserManage(false); 
+      setShowAuth(false); 
+      setShowSettings(false); 
+      setExpandedExpenseId(null); 
+      setIsFormExpanded(false); 
+      setShowDebtDetails(false); 
+  };
+
+  const goBack = () => {
+      window.history.back();
+  };
+
+  const openModal = (hash: string, openLogic: () => void) => {
+      window.history.pushState({ modal: hash }, '', `#${hash}`);
+      openLogic();
+  };
+
+  useEffect(() => {
+      const handlePopState = () => {
+          closeAllWidgets();
+      };
+      window.addEventListener('popstate', handlePopState);
+      return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   useEffect(() => {
       localStorage.setItem('bkk_exchange_rates', JSON.stringify(exchangeRates));
@@ -469,7 +526,11 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
       const gId = tempGroupId;
       const pCode = tempPin;
       
-      setGroupId(gId); setPin(pCode); setIsSyncMode(true); setShowAuth(false);
+      setGroupId(gId); setPin(pCode); setIsSyncMode(true); 
+      
+      // Close modal using history back
+      goBack();
+      
       localStorage.setItem('bkk_sync_session', JSON.stringify({ g: gId, p: pCode }));
 
       // Auto-initialize cloud if empty
@@ -541,7 +602,19 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
       setEditNameVal(user.name);
   };
 
-  const resetForm = () => { setTitle(''); setAmount(''); setEditingId(null); setIsFormExpanded(false); setSplitType('split'); setCustomAmounts({}); setSelectedParticipants(users.map(u => u.id)); setSelectedDate(getTodayString()); };
+  const clearFormInputs = () => { 
+      setTitle(''); setAmount(''); setEditingId(null); 
+      setSplitType('split'); setCustomAmounts({}); 
+      setSelectedParticipants(users.map(u => u.id)); 
+      setSelectedDate(getTodayString()); 
+  };
+
+  // Only used for backdrop click to reset without leaving history if not needed, 
+  // but for consistency we should probably use goBack for backdrop too if it's considered a "Close" action.
+  // Actually, resetForm is usually called when we want to close.
+  const closeForm = () => {
+     goBack();
+  };
 
   const handleEdit = (expense: Expense, e: React.MouseEvent) => {
       if (e) e.stopPropagation();
@@ -553,7 +626,8 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
           Object.entries(expense.individualAmounts).forEach(([uid, amt]) => ca[uid] = amt.toString());
           setCustomAmounts(ca);
       }
-      setEditingId(expense.id); setIsFormExpanded(true);
+      setEditingId(expense.id); 
+      openModal('edit', () => setIsFormExpanded(true));
       const container = document.getElementById('expense-scroll-container');
       if (container) container.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -600,7 +674,10 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
         if (editingId) return prev.map(e => e.id === editingId ? payload : e);
         return [payload, ...prev];
     });
-    resetForm();
+    
+    // Clear data and Close form
+    clearFormInputs();
+    goBack();
 
     if (isSyncMode && syncService.isReady()) {
         try {
@@ -619,7 +696,12 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
     
     // Optimistic Update
     setExpenses(prev => prev.filter(e => e.id !== id));
-    if (editingId === id) resetForm();
+    
+    // If we are currently editing the item we just deleted, clear the form and close it
+    if (editingId === id) {
+        clearFormInputs();
+        goBack();
+    }
 
     if (isSyncMode && syncService.isReady()) {
         try { await syncService.deleteExpense(groupId, pin, id); } 
@@ -635,7 +717,9 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
       
       // Local Update Immediately
       setExpenses(prev => prev.map(e => ({ ...e, isSettled: true })));
-      setShowDebtDetails(false);
+      
+      // Close detail view
+      goBack();
 
       if (isSyncMode && syncService.isReady()) {
           try { await syncService.settleExpenses(groupId, pin, unsettledIds); } 
@@ -740,24 +824,30 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
     { label: '0', val: '0', wide: true }, { label: '.', val: '.' },
   ];
 
-  const closeAllWidgets = () => { setShowSimpleCalc(false); setShowExchange(false); setShowUserManage(false); setShowAuth(false); setShowSettings(false); setExpandedExpenseId(null); };
-
   const toggleWidget = (type: 'calc' | 'exchange' | 'users' | 'auth' | 'settings') => {
       const isCurrentlyOpen = (type === 'calc' && showSimpleCalc) || 
                               (type === 'exchange' && showExchange) || 
                               (type === 'users' && showUserManage) || 
                               (type === 'auth' && showAuth) || 
                               (type === 'settings' && showSettings);
-      closeAllWidgets();
+      
       if (!isCurrentlyOpen) {
-          if (type === 'calc') setShowSimpleCalc(true);
-          else if (type === 'exchange') setShowExchange(true);
-          else if (type === 'users') setShowUserManage(true);
-          else if (type === 'auth') setShowAuth(true);
+          // If we are opening a widget, we first close others by going back to root? 
+          // No, simplified: just open it. The pushState will handle the history stack.
+          // However, to prevent stack buildup if switching directly between widgets, we could close others first.
+          // For simplicity in this "Fake Pages" request, we just pushState.
+          
+          if (type === 'calc') openModal('calc', () => setShowSimpleCalc(true));
+          else if (type === 'exchange') openModal('exchange', () => setShowExchange(true));
+          else if (type === 'users') openModal('users', () => setShowUserManage(true));
+          else if (type === 'auth') openModal('auth', () => setShowAuth(true));
           else if (type === 'settings') {
              setTempSettings(tripSettings);
-             setShowSettings(true);
+             openModal('settings', () => setShowSettings(true));
           }
+      } else {
+          // If closing, we go back in history to remove the hash
+          goBack();
       }
   };
 
@@ -808,7 +898,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                         <div className="flex -space-x-2">
                             {users.slice(0,3).map(u => (
                                 <div key={u.id} className="w-6 h-6 rounded-full bg-stone-600 border border-stone-800 flex items-center justify-center text-[10px]">
-                                    {u.name[0]}
+                                    {avatarLabels[u.id]}
                                 </div>
                             ))}
                             {users.length > 3 && (
@@ -816,7 +906,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                             )}
                         </div>
                         <button 
-                            onClick={() => setShowDebtDetails(true)}
+                            onClick={() => openModal('debt', () => setShowDebtDetails(true))}
                             className="text-xs bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-full transition-colors"
                         >
                             {t.checkDetails}
@@ -919,7 +1009,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                                                 const payerName = users.find(u => u.id === expense.paidBy)?.name;
                                                 
                                                 if (expense.splitType === 'self') {
-                                                    details.push({ name: payerName || 'Unknown', amount: expense.amount });
+                                                    details.push({ id: expense.paidBy, name: payerName || 'Unknown', amount: expense.amount });
                                                 } else {
                                                     let participants: string[] = [];
                                                     let amounts: Record<string, number> = {};
@@ -935,7 +1025,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
 
                                                     participants.forEach(uid => {
                                                         const uName = users.find(u => u.id === uid)?.name || 'Unknown';
-                                                        details.push({ name: uName, amount: Number(amounts[uid] || 0) });
+                                                        details.push({ id: uid, name: uName, amount: Number(amounts[uid] || 0) });
                                                     });
                                                 }
 
@@ -943,7 +1033,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                                                     <div key={i} className="flex justify-between items-center text-sm">
                                                         <div className="flex items-center gap-2">
                                                             <div className="w-5 h-5 rounded-full bg-stone-200 flex items-center justify-center text-[8px] text-stone-500 font-bold">
-                                                                {d.name[0]}
+                                                                {avatarLabels[d.id]}
                                                             </div>
                                                             <span className="text-stone-600">{d.name}</span>
                                                         </div>
@@ -980,7 +1070,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
 
         {/* Floating Action Button */}
         <button
-            onClick={() => { resetForm(); setIsFormExpanded(true); }}
+            onClick={() => { clearFormInputs(); openModal('add', () => setIsFormExpanded(true)); }}
             className="fixed bottom-6 right-6 bg-stone-800 text-white p-4 rounded-full shadow-xl hover:bg-stone-700 transition-colors z-20"
         >
             <Plus size={24} />
@@ -989,7 +1079,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
         {/* Add/Edit Form Sheet */}
         <div className={`fixed inset-x-0 bottom-0 bg-white rounded-t-3xl shadow-[0_-4px_30px_rgba(0,0,0,0.1)] transition-transform duration-300 z-30 flex flex-col max-h-[85vh] ${isFormExpanded ? 'translate-y-0' : 'translate-y-full'}`}>
             <div className="p-4 border-b border-stone-100 flex items-center justify-between">
-                <button onClick={() => setIsFormExpanded(false)} className="text-stone-400 p-2"><ChevronDown size={24}/></button>
+                <button onClick={closeForm} className="text-stone-400 p-2"><ChevronDown size={24}/></button>
                 <h3 className="font-bold text-lg">{editingId ? t.editExpense : t.addExpense}</h3>
                 <button 
                     onClick={handleSave}
@@ -1132,7 +1222,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
         </div>
 
         {/* Overlay Backdrop */}
-        {isFormExpanded && <div className="fixed inset-0 bg-black/20 z-20 backdrop-blur-[1px]" onClick={resetForm} />}
+        {isFormExpanded && <div className="fixed inset-0 bg-black/20 z-20 backdrop-blur-[1px]" onClick={closeForm} />}
 
         {/* --- Widgets --- */}
         
@@ -1140,7 +1230,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
         {showDebtDetails && (
             <div className="absolute inset-0 z-50 bg-white flex flex-col animate-in slide-in-from-bottom-5">
                  <div className="p-4 border-b border-stone-100 flex items-center gap-3">
-                     <button onClick={() => setShowDebtDetails(false)}><ArrowLeft size={20} /></button>
+                     <button onClick={goBack}><ArrowLeft size={20} /></button>
                      <h2 className="font-bold text-lg">{t.settleDetails}</h2>
                      <div className="flex-1" />
                      {!stats.allSettled && (
@@ -1175,7 +1265,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
         {showUserManage && (
             <div className="absolute inset-0 z-50 bg-white flex flex-col animate-in slide-in-from-right-5">
                 <div className="p-4 border-b border-stone-100 flex items-center gap-3">
-                    <button onClick={() => setShowUserManage(false)}><ArrowLeft size={20} /></button>
+                    <button onClick={goBack}><ArrowLeft size={20} /></button>
                     <h2 className="font-bold text-lg">{t.members}</h2>
                 </div>
                 <div className="p-5 overflow-y-auto">
@@ -1197,7 +1287,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                                 {editingUserId === u.id ? (
                                     <div className="flex items-center gap-2 flex-1">
                                         <div className="w-8 h-8 rounded-full bg-stone-100 flex items-center justify-center text-stone-500 text-xs font-bold">
-                                            {u.name[0]}
+                                            {avatarLabels[u.id]}
                                         </div>
                                         <input 
                                             type="text"
@@ -1217,7 +1307,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                                     <>
                                         <div className="flex items-center gap-3">
                                             <div className="w-8 h-8 rounded-full bg-stone-100 flex items-center justify-center text-stone-500 text-xs font-bold">
-                                                {u.name[0]}
+                                                {avatarLabels[u.id]}
                                             </div>
                                             <span className="font-medium">{u.name}</span>
                                         </div>
@@ -1243,7 +1333,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
         {showAuth && (
             <div className="absolute inset-0 z-50 bg-white flex flex-col animate-in slide-in-from-right-5">
                 <div className="p-4 border-b border-stone-100 flex items-center gap-3">
-                    <button onClick={() => setShowAuth(false)}><ArrowLeft size={20} /></button>
+                    <button onClick={goBack}><ArrowLeft size={20} /></button>
                     <h2 className="font-bold text-lg">{t.sync}</h2>
                 </div>
                 <div className="p-6 flex flex-col items-center justify-center flex-1">
@@ -1314,7 +1404,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
         {showSettings && (
              <div className="absolute inset-0 z-50 bg-white flex flex-col animate-in slide-in-from-right-5">
                 <div className="p-4 border-b border-stone-100 flex items-center gap-3">
-                    <button onClick={() => setShowSettings(false)}><ArrowLeft size={20} /></button>
+                    <button onClick={goBack}><ArrowLeft size={20} /></button>
                     <h2 className="font-bold text-lg">{t.settings}</h2>
                 </div>
                 <div className="p-6 space-y-6 overflow-y-auto pb-10">
@@ -1352,7 +1442,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                         {hasUnsettledExpenses && (
                              <div className="flex items-center gap-1.5 text-red-500 mt-2 text-xs font-medium bg-red-50 p-2 rounded-lg">
                                 <AlertTriangle size={14} />
-                                <span>需結清所有款項才能變更幣別</span>
+                                <span>{t.currencyChangeWarn}</span>
                              </div>
                         )}
                     </div>
@@ -1388,7 +1478,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                                 : { ...tempSettings, currency: tempSettings.currency || 'TWD' };
                             
                             onUpdateLocalSettings(finalSettings);
-                            setShowSettings(false);
+                            goBack();
                         }}
                         className="w-full bg-stone-800 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2"
                     >
@@ -1432,7 +1522,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
             <div className="absolute inset-x-0 bottom-0 bg-stone-800 p-4 pb-8 z-50 rounded-t-3xl shadow-2xl animate-in slide-in-from-bottom-10">
                 <div className="flex justify-between items-center mb-4 text-white">
                     <span className="text-sm font-bold opacity-50 uppercase">{t.calculator}</span>
-                    <button onClick={() => setShowSimpleCalc(false)}><ChevronDown size={24}/></button>
+                    <button onClick={goBack}><ChevronDown size={24}/></button>
                 </div>
                 <div className="bg-stone-900/50 p-4 rounded-xl mb-4 text-right">
                     <span className="text-3xl text-white font-mono tracking-widest">{simpleCalcDisplay || '0'}</span>
@@ -1455,7 +1545,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
         {showExchange && (
             <div className="absolute inset-0 z-50 bg-white flex flex-col animate-in slide-in-from-right-5">
                 <div className="p-4 border-b border-stone-100 flex items-center gap-3">
-                    <button onClick={() => setShowExchange(false)}><ArrowLeft size={20} /></button>
+                    <button onClick={goBack}><ArrowLeft size={20} /></button>
                     <h2 className="font-bold text-lg">{t.exchange}</h2>
                 </div>
                 <div className="p-6 overflow-y-auto h-full pb-20">
@@ -1463,7 +1553,6 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                          <div className="flex items-center justify-center gap-2 mb-4 flex-wrap">
                             {SUPPORTED_CURRENCIES
                                 .filter(c => c.code !== tripCurrency)
-                                .slice(0, 5) // Show top 5 to avoid clutter
                                 .map(c => (
                                 <button 
                                     key={c.code}
@@ -1484,7 +1573,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                          </p>
                          <div className="flex justify-center">
                              <button 
-                                onClick={() => { setAmount(calcAmount); setCategory('shopping'); setShowExchange(false); setIsFormExpanded(true); }}
+                                onClick={() => { setAmount(calcAmount); setCategory('shopping'); goBack(); setTimeout(() => openModal('add', () => setIsFormExpanded(true)), 100); }}
                                 className="flex items-center gap-2 text-xs bg-white border border-stone-200 px-3 py-1.5 rounded-full shadow-sm active:scale-95 transition-transform"
                              >
                                  <Plus size={14} /> {t.recordIt}
