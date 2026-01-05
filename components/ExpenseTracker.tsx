@@ -1354,6 +1354,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                             type="text" 
                             value={newUserName}
                             onChange={(e) => setNewUserName(e.target.value)}
+                            maxLength={24}
                             placeholder={t.newMemberPlaceholder}
                             className="flex-1 bg-stone-50 border border-stone-200 rounded-xl px-4 py-2 text-sm outline-none"
                         />
@@ -1373,6 +1374,7 @@ const ExpenseTracker = forwardRef<{ pushSettings: (settings: TripSettings) => Pr
                                             type="text"
                                             value={editNameVal}
                                             onChange={(e) => setEditNameVal(e.target.value)}
+                                            maxLength={24}
                                             className="flex-1 bg-stone-50 border border-stone-300 rounded px-2 py-1 text-sm outline-none"
                                             autoFocus
                                         />
